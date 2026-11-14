@@ -55,6 +55,34 @@ jobs:
             -type f -name "*.apk" -exec cp {} dist/ \;
           test -n "$(find dist -name '*.apk' -print -quit)"
 
+      - name: Verify APK signatures
+        run: |
+          docker run --rm \
+            --entrypoint /bin/bash \
+            -v "${{ github.workspace }}:/workspace" \
+            schizogram-builder \
+            -c '
+              set -euo pipefail
+
+              APKSIGNER=$(find "$ANDROID_HOME/build-tools" \
+                -type f -name apksigner | sort | tail -n 1)
+
+              if [ -z "$APKSIGNER" ]; then
+                echo "ERROR: apksigner not found"
+                exit 1
+              fi
+
+              for apk in /workspace/dist/*.apk; do
+                [ -f "$apk" ] || continue
+
+                echo "===== $(basename "$apk") =====" \
+                  | tee -a /workspace/apk-signature-report.txt
+
+                "$APKSIGNER" verify --verbose --print-certs "$apk" \
+                  2>&1 | tee -a /workspace/apk-signature-report.txt
+              done
+            '
+
       - name: Upload Schizogram APK
         uses: actions/upload-artifact@v4
         with:
@@ -66,5 +94,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Schizogram-Security-Report
-          path: native-libraries-sha256.txt
+          path: |
+            native-libraries-sha256.txt
+            apk-signature-report.txt
           if-no-files-found: warn
