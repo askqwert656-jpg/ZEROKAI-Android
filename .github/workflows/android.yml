@@ -1,0 +1,20 @@
+name: ZEROKAI Android Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Telegram source
+        run: |
+          git clone --depth 1 https://github.com/DrKLO/Telegram.git telegram-source
+
+      - name: Check source
+        run: |
+          ls telegram-source
