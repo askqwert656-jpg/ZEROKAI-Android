@@ -1,0 +1,31 @@
+
+name: Schizogram Security Scan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Telegram source
+        run: |
+          git clone --depth 1 https://github.com/DrKLO/Telegram.git Telegram
+
+      - name: Scan source code and dependencies
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: Telegram
+          scanners: vuln,misconfig,secret
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
