@@ -1,3 +1,4 @@
+
 name: ZEROKAI Android Build
 
 on:
@@ -9,6 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -16,16 +18,26 @@ jobs:
 
       - name: Download Telegram source
         run: |
-          git clone --recursive --shallow-submodules https://github.com/DrKLO/Telegram.git Telegram
+          git clone --recursive --depth 1 --shallow-submodules https://github.com/DrKLO/Telegram.git Telegram
 
-      - name: Build Telegram APK
+      - name: Build Docker image
+        run: docker build -t zerokai-builder Telegram
+
+      - name: Build APK
         run: |
-          docker build -t zerokai-builder Telegram
-          docker run --rm -v "$GITHUB_WORKSPACE/Telegram:/home/source" zerokai-builder
+          docker run --rm \
+            -v "${{ github.workspace }}/Telegram:/home/source" \
+            zerokai-builder
+
+      - name: Collect APK files
+        run: |
+          mkdir -p dist
+          find Telegram/TMessagesProj/build/outputs/apk -type f -name "*.apk" -exec cp {} dist/ \;
+          test -n "$(find dist -name '*.apk' -print -quit)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ZEROKAI-APK
-          path: Telegram/TMessagesProj/build/outputs/apk/**/*.apk
+          path: dist/*.apk
           if-no-files-found: error
