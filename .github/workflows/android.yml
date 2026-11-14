@@ -3,6 +3,9 @@ name: ZEROKAI Android Build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,8 +16,16 @@ jobs:
 
       - name: Download Telegram source
         run: |
-          git clone --depth 1 https://github.com/DrKLO/Telegram.git telegram-source
+          git clone --recursive --shallow-submodules https://github.com/DrKLO/Telegram.git Telegram
 
-      - name: Check source
+      - name: Build Telegram APK
         run: |
-          ls telegram-source
+          docker build -t zerokai-builder Telegram
+          docker run --rm -v "$GITHUB_WORKSPACE/Telegram:/home/source" zerokai-builder
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZEROKAI-APK
+          path: Telegram/TMessagesProj/build/outputs/apk/**/*.apk
+          if-no-files-found: error
