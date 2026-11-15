@@ -1,4 +1,3 @@
-
 name: Schizogram Android Build
 
 on:
@@ -16,17 +15,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Telegram source
+      - name: Download pinned Telegram source
         run: |
-          git clone --recursive --depth 1 --shallow-submodules https://github.com/DrKLO/Telegram.git Telegram
+          set -euo pipefail
+          git init Telegram
+          git -C Telegram remote add origin https://github.com/DrKLO/Telegram.git
+          git -C Telegram fetch --depth 1 origin 21f7d109da6ab3506c9e9577f98c6a38771ab335
+          git -C Telegram checkout --detach FETCH_HEAD
+          git -C Telegram submodule sync --recursive
+          git -C Telegram submodule update --init --recursive --depth 1
+
+      - name: Update widget sandbox to v0.6.4
+        run: |
+          set -euo pipefail
+
+          SANDBOX="Telegram/TMessagesProj/jni/twidget/widget-sandbox"
+
+          git -C "$SANDBOX" fetch --depth 1 origin tag v0.6.4
+          git -C "$SANDBOX" checkout --detach v0.6.4
+          git -C "$SANDBOX" submodule sync --recursive
+          git -C "$SANDBOX" submodule update --init --recursive --depth 1
+
+          VERSION=$(python3 -c 'import json; print(json.load(open("'"$SANDBOX"'/VERSION.json"))["version"])')
+          if [ "$VERSION" != "0.6.4" ]; then
+            echo "ERROR: Expected widget-sandbox v0.6.4, got $VERSION"
+            exit 1
+          fi
+
+          echo "Widget sandbox version: $VERSION"
+          echo "Widget sandbox commit:"
+          git -C "$SANDBOX" rev-parse HEAD
+          echo "Nested QuickJS commit:"
+          git -C "$SANDBOX/packages/ios/Sources/CQuickJS/quickjs" rev-parse HEAD
 
       - name: Record source versions
         run: |
+          set -euo pipefail
           cd Telegram
           echo "Telegram commit:"
           git rev-parse HEAD
           echo "Submodule versions:"
           git submodule status --recursive
+          echo "Widget sandbox v0.6.4 working-tree commit:"
+          git -C TMessagesProj/jni/twidget/widget-sandbox rev-parse HEAD
+          echo "Widget sandbox nested submodules:"
+          git -C TMessagesProj/jni/twidget/widget-sandbox submodule status --recursive
 
       - name: Configure Schizogram Telegram API
         env:
@@ -57,13 +90,13 @@ jobs:
               content = f.read()
 
           content, id_count = re.subn(
-              r'public\s+static\s+(?:final\s+)?int\s+APP_ID\s*=\s*\d+\s*;',
+              r'public\\s+static\\s+(?:final\\s+)?int\\s+APP_ID\\s*=\\s*\\d+\\s*;',
               f'public static int APP_ID = {app_id};',
               content
           )
 
           content, hash_count = re.subn(
-              r'public\s+static\s+(?:final\s+)?String\s+APP_HASH\s*=\s*"[^"]*"\s*;',
+              r'public\\s+static\\s+(?:final\\s+)?String\\s+APP_HASH\\s*=\\s*"[^"]*"\\s*;',
               f'public static String APP_HASH = "{app_hash}";',
               content
           )
@@ -117,7 +150,7 @@ jobs:
             DEST="native-libs/$(basename "$apk" .apk)"
             mkdir -p "$DEST"
 
-            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\.so$'; then
+            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\\.so$'; then
               unzip -o "$apk" 'lib/*/*.so' -d "$DEST" >/dev/null
             else
               echo "No native libraries found in $(basename "$apk")"
@@ -140,7 +173,7 @@ jobs:
           fi
 
           echo "Checking important libraries:"
-          grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
+          grep -E 'libtmessages\\.49\\.so|libtwidget\\.so' "$REPORT" || true
 
       - name: Verify APK signatures
         run: |
