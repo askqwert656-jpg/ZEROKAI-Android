@@ -174,8 +174,8 @@ jobs:
 
       - name: Build APK
         run: |
-          docker run --rm \\
-            -v "${{ github.workspace }}/Telegram:/home/source" \\
+          docker run --rm \
+            -v "${{ github.workspace }}/Telegram:/home/source" \
             schizogram-builder
 
       - name: Remove private signing key from workspace
@@ -187,8 +187,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
 
-          find Telegram/TMessagesProj/build/outputs/apk \\
-            -type f -name "*.apk" -exec cp {} dist/ \\;
+          find Telegram/TMessagesProj/build/outputs/apk \
+            -type f -name "*.apk" -exec cp {} dist/ \;
 
           test -n "$(find dist -name '*.apk' -print -quit)"
 
@@ -210,15 +210,15 @@ jobs:
             DEST="native-libs/$(basename "$apk" .apk)"
             mkdir -p "$DEST"
 
-            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\\.so$'; then
+            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\.so$'; then
               unzip -o "$apk" 'lib/*/*.so' -d "$DEST" >/dev/null
             else
               echo "No native libraries found in $(basename "$apk")"
             fi
           done
 
-          find native-libs -type f -name "*.so" -print0 \\
-            | sort -z \\
+          find native-libs -type f -name "*.so" -print0 \
+            | sort -z \
             | while IFS= read -r -d '' file; do
                 sha256sum "$file"
               done | tee "$REPORT"
@@ -233,7 +233,7 @@ jobs:
           fi
 
           echo "Checking important libraries:"
-          grep -E 'libtmessages\\.49\\.so|libtwidget\\.so' "$REPORT" || true
+          grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
 
       - name: Verify APK signatures and signing identity
         env:
@@ -242,15 +242,15 @@ jobs:
           set -euo pipefail
           EXPECTED_CERT=$(printf '%s' "$SIGNING_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
 
-          docker run --rm \\
-            --entrypoint /bin/bash \\
-            -e EXPECTED_SIGNING_CERT_SHA256="$EXPECTED_CERT" \\
-            -v "${{ github.workspace }}:/workspace" \\
-            schizogram-builder \\
+          docker run --rm \
+            --entrypoint /bin/bash \
+            -e EXPECTED_SIGNING_CERT_SHA256="$EXPECTED_CERT" \
+            -v "${{ github.workspace }}:/workspace" \
+            schizogram-builder \
             -c '
               set -euo pipefail
 
-              APKSIGNER=$(find "$ANDROID_HOME/build-tools" \\
+              APKSIGNER=$(find "$ANDROID_HOME/build-tools" \
                 -type f -name apksigner | sort | tail -n 1)
 
               if [ -z "$APKSIGNER" ]; then
@@ -263,18 +263,18 @@ jobs:
               for apk in /workspace/dist/*.apk; do
                 [ -f "$apk" ] || continue
 
-                echo "===== $(basename "$apk") =====" \\
+                echo "===== $(basename "$apk") =====" \
                   | tee -a /workspace/apk-signature-report.txt
 
                 OUTPUT=$("$APKSIGNER" verify --verbose --print-certs "$apk" 2>&1) || {
-                  printf "%s\\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
+                  printf "%s\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
                   exit 1
                 }
 
-                printf "%s\\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
+                printf "%s\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
 
-                ACTUAL_CERT=$(printf "%s\\n" "$OUTPUT" \\
-                  | sed -nE "s/.*Signer #1 certificate SHA-256 digest: *([0-9a-fA-F:]+).*/\\1/p" \\
+                ACTUAL_CERT=$(printf "%s\n" "$OUTPUT" \
+                  | sed -nE "s/.*Signer #1 certificate SHA-256 digest: *([0-9a-fA-F:]+).*/\1/p" \
                   | head -n 1 | tr -d ":" | tr "[:lower:]" "[:upper:]")
 
                 if [ "$ACTUAL_CERT" != "$EXPECTED_SIGNING_CERT_SHA256" ]; then
