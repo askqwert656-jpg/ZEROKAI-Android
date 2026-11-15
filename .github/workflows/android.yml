@@ -37,16 +37,39 @@ jobs:
             -v "${{ github.workspace }}/Telegram:/home/source" \
             schizogram-builder
 
+      - name: Collect APK files
+        run: |
+          mkdir -p dist
+          find Telegram/TMessagesProj/build/outputs/apk \
+            -type f -name "*.apk" -exec cp {} dist/ \;
+          test -n "$(find dist -name '*.apk' -print -quit)"
+
       - name: Check native libraries
         run: |
           set -euo pipefail
 
           REPORT="native-libraries-sha256.txt"
+          mkdir -p native-libs
           : > "$REPORT"
 
-          echo "Searching all build directories for native libraries..."
+          echo "Extracting native libraries from APK files..."
 
-          find Telegram -type f -name "*.so" -print0 \
+          for apk in dist/*.apk; do
+            [ -f "$apk" ] || continue
+
+            echo "Checking: $apk"
+
+            DEST="native-libs/$(basename "$apk" .apk)"
+            mkdir -p "$DEST"
+
+            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\.so$'; then
+              unzip -o "$apk" 'lib/*/*.so' -d "$DEST" >/dev/null
+            else
+              echo "No native libraries found in $(basename "$apk")"
+            fi
+          done
+
+          find native-libs -type f -name "*.so" -print0 \
             | sort -z \
             | while IFS= read -r -d '' file; do
                 sha256sum "$file"
@@ -57,19 +80,12 @@ jobs:
           echo "Found native libraries: $COUNT"
 
           if [ "$COUNT" -eq 0 ]; then
-            echo "ERROR: No native libraries found"
+            echo "ERROR: No native libraries found inside APK files"
             exit 1
           fi
 
           echo "Checking important libraries:"
           grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
-
-      - name: Collect APK files
-        run: |
-          mkdir -p dist
-          find Telegram/TMessagesProj/build/outputs/apk \
-            -type f -name "*.apk" -exec cp {} dist/ \;
-          test -n "$(find dist -name '*.apk' -print -quit)"
 
       - name: Verify APK signatures
         run: |
