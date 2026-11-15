@@ -90,13 +90,13 @@ jobs:
               content = f.read()
 
           content, id_count = re.subn(
-              r'public\s+static\s+(?:final\s+)?int\s+APP_ID\s*=\s*\d+\s*;',
+              r'public\\s+static\\s+(?:final\\s+)?int\\s+APP_ID\\s*=\\s*\\d+\\s*;',
               f'public static int APP_ID = {app_id};',
               content
           )
 
           content, hash_count = re.subn(
-              r'public\s+static\s+(?:final\s+)?String\s+APP_HASH\s*=\s*"[^"]*"\s*;',
+              r'public\\s+static\\s+(?:final\\s+)?String\\s+APP_HASH\\s*=\\s*"[^"]*"\\s*;',
               f'public static String APP_HASH = "{app_hash}";',
               content
           )
@@ -113,22 +113,82 @@ jobs:
           print("Telegram API credentials configured successfully.")
           PY
 
+      - name: Configure private PotuzhnoGram signing key
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_CERT_SHA256: ${{ secrets.SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+
+          for name in SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_PASSWORD SIGNING_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then
+              echo "ERROR: Missing GitHub Secret: $name"
+              exit 1
+            fi
+          done
+
+          if [[ ! "$SIGNING_STORE_PASSWORD" =~ ^[A-Za-z0-9]{20,}$ ]] || [[ ! "$SIGNING_KEY_PASSWORD" =~ ^[A-Za-z0-9]{20,}$ ]]; then
+            echo "ERROR: Signing passwords must contain at least 20 letters or digits."
+            exit 1
+          fi
+
+          EXPECTED_CERT=$(printf '%s' "$SIGNING_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          if [[ ! "$EXPECTED_CERT" =~ ^[0-9A-F]{64}$ ]]; then
+            echo "ERROR: SIGNING_CERT_SHA256 must be a SHA-256 certificate fingerprint."
+            exit 1
+          fi
+
+          KEYSTORE="Telegram/TMessagesProj/config/release.keystore"
+          mkdir -p "$(dirname "$KEYSTORE")"
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          test -s "$KEYSTORE"
+
+          python3 - "$SIGNING_STORE_PASSWORD" "$SIGNING_KEY_PASSWORD" <<'PY'
+          import sys
+          from pathlib import Path
+
+          store_password, key_password = sys.argv[1:]
+          path = Path("Telegram/gradle.properties")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          values = {
+              "RELEASE_STORE_PASSWORD": store_password,
+              "RELEASE_KEY_PASSWORD": key_password,
+              "RELEASE_KEY_ALIAS": "potuzhogram",
+          }
+
+          for key, value in values.items():
+              matches = [i for i, line in enumerate(lines) if line.startswith(key + "=")]
+              if len(matches) != 1:
+                  raise SystemExit(f"ERROR: Expected exactly one {key} setting in gradle.properties")
+              lines[matches[0]] = f"{key}={value}"
+
+          path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+          print("Private signing configuration prepared.")
+          PY
+
       - name: Build Docker image
         run: docker build -t schizogram-builder Telegram
 
       - name: Build APK
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}/Telegram:/home/source" \
+          docker run --rm \\
+            -v "${{ github.workspace }}/Telegram:/home/source" \\
             schizogram-builder
+
+      - name: Remove private signing key from workspace
+        if: always()
+        run: rm -f Telegram/TMessagesProj/config/release.keystore
 
       - name: Collect APK files
         run: |
           set -euo pipefail
           mkdir -p dist
 
-          find Telegram/TMessagesProj/build/outputs/apk \
-            -type f -name "*.apk" -exec cp {} dist/ \;
+          find Telegram/TMessagesProj/build/outputs/apk \\
+            -type f -name "*.apk" -exec cp {} dist/ \\;
 
           test -n "$(find dist -name '*.apk' -print -quit)"
 
@@ -150,15 +210,15 @@ jobs:
             DEST="native-libs/$(basename "$apk" .apk)"
             mkdir -p "$DEST"
 
-            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\.so$'; then
+            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\\.so$'; then
               unzip -o "$apk" 'lib/*/*.so' -d "$DEST" >/dev/null
             else
               echo "No native libraries found in $(basename "$apk")"
             fi
           done
 
-          find native-libs -type f -name "*.so" -print0 \
-            | sort -z \
+          find native-libs -type f -name "*.so" -print0 \\
+            | sort -z \\
             | while IFS= read -r -d '' file; do
                 sha256sum "$file"
               done | tee "$REPORT"
@@ -173,18 +233,24 @@ jobs:
           fi
 
           echo "Checking important libraries:"
-          grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
+          grep -E 'libtmessages\\.49\\.so|libtwidget\\.so' "$REPORT" || true
 
-      - name: Verify APK signatures
+      - name: Verify APK signatures and signing identity
+        env:
+          SIGNING_CERT_SHA256: ${{ secrets.SIGNING_CERT_SHA256 }}
         run: |
-          docker run --rm \
-            --entrypoint /bin/bash \
-            -v "${{ github.workspace }}:/workspace" \
-            schizogram-builder \
+          set -euo pipefail
+          EXPECTED_CERT=$(printf '%s' "$SIGNING_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+
+          docker run --rm \\
+            --entrypoint /bin/bash \\
+            -e EXPECTED_SIGNING_CERT_SHA256="$EXPECTED_CERT" \\
+            -v "${{ github.workspace }}:/workspace" \\
+            schizogram-builder \\
             -c '
               set -euo pipefail
 
-              APKSIGNER=$(find "$ANDROID_HOME/build-tools" \
+              APKSIGNER=$(find "$ANDROID_HOME/build-tools" \\
                 -type f -name apksigner | sort | tail -n 1)
 
               if [ -z "$APKSIGNER" ]; then
@@ -197,11 +263,26 @@ jobs:
               for apk in /workspace/dist/*.apk; do
                 [ -f "$apk" ] || continue
 
-                echo "===== $(basename "$apk") =====" \
+                echo "===== $(basename "$apk") =====" \\
                   | tee -a /workspace/apk-signature-report.txt
 
-                "$APKSIGNER" verify --verbose --print-certs "$apk" \
-                  2>&1 | tee -a /workspace/apk-signature-report.txt
+                OUTPUT=$("$APKSIGNER" verify --verbose --print-certs "$apk" 2>&1) || {
+                  printf "%s\\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
+                  exit 1
+                }
+
+                printf "%s\\n" "$OUTPUT" | tee -a /workspace/apk-signature-report.txt
+
+                ACTUAL_CERT=$(printf "%s\\n" "$OUTPUT" \\
+                  | sed -nE "s/.*Signer #1 certificate SHA-256 digest: *([0-9a-fA-F:]+).*/\\1/p" \\
+                  | head -n 1 | tr -d ":" | tr "[:lower:]" "[:upper:]")
+
+                if [ "$ACTUAL_CERT" != "$EXPECTED_SIGNING_CERT_SHA256" ]; then
+                  echo "ERROR: APK signing certificate does not match the private key fingerprint."
+                  exit 1
+                fi
+
+                echo "Signing identity verified for $(basename "$apk")."
               done
             '
 
