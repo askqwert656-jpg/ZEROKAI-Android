@@ -90,13 +90,13 @@ jobs:
               content = f.read()
 
           content, id_count = re.subn(
-              r'public\\s+static\\s+(?:final\\s+)?int\\s+APP_ID\\s*=\\s*\\d+\\s*;',
+              r'public\s+static\s+(?:final\s+)?int\s+APP_ID\s*=\s*\d+\s*;',
               f'public static int APP_ID = {app_id};',
               content
           )
 
           content, hash_count = re.subn(
-              r'public\\s+static\\s+(?:final\\s+)?String\\s+APP_HASH\\s*=\\s*"[^"]*"\\s*;',
+              r'public\s+static\s+(?:final\s+)?String\s+APP_HASH\s*=\s*"[^"]*"\s*;',
               f'public static String APP_HASH = "{app_hash}";',
               content
           )
@@ -150,7 +150,7 @@ jobs:
             DEST="native-libs/$(basename "$apk" .apk)"
             mkdir -p "$DEST"
 
-            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\\.so$'; then
+            if unzip -Z1 "$apk" | grep -E '^lib/[^/]+/[^/]+\.so$'; then
               unzip -o "$apk" 'lib/*/*.so' -d "$DEST" >/dev/null
             else
               echo "No native libraries found in $(basename "$apk")"
@@ -173,7 +173,7 @@ jobs:
           fi
 
           echo "Checking important libraries:"
-          grep -E 'libtmessages\\.49\\.so|libtwidget\\.so' "$REPORT" || true
+          grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
 
       - name: Verify APK signatures
         run: |
