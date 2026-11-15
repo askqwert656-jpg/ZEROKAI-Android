@@ -28,6 +28,58 @@ jobs:
           echo "Submodule versions:"
           git submodule status --recursive
 
+      - name: Configure Schizogram Telegram API
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_HASH: ${{ secrets.APP_HASH }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$APP_ID" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: APP_ID is invalid"
+            exit 1
+          fi
+
+          if [[ ! "$APP_HASH" =~ ^[0-9a-fA-F]{32}$ ]]; then
+            echo "ERROR: APP_HASH is invalid"
+            exit 1
+          fi
+
+          FILE="Telegram/TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java"
+
+          python3 - "$FILE" "$APP_ID" "$APP_HASH" <<'PY'
+          import re
+          import sys
+
+          path, app_id, app_hash = sys.argv[1:]
+
+          with open(path, encoding="utf-8") as f:
+              content = f.read()
+
+          content, id_count = re.subn(
+              r'public\s+static\s+(?:final\s+)?int\s+APP_ID\s*=\s*\d+\s*;',
+              f'public static int APP_ID = {app_id};',
+              content
+          )
+
+          content, hash_count = re.subn(
+              r'public\s+static\s+(?:final\s+)?String\s+APP_HASH\s*=\s*"[^"]*"\s*;',
+              f'public static String APP_HASH = "{app_hash}";',
+              content
+          )
+
+          if id_count != 1 or hash_count != 1:
+              raise SystemExit(
+                  f"ERROR: BuildVars.java update failed. "
+                  f"APP_ID matches: {id_count}, APP_HASH matches: {hash_count}"
+              )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print("Telegram API credentials configured successfully.")
+          PY
+
       - name: Build Docker image
         run: docker build -t schizogram-builder Telegram
 
@@ -39,9 +91,12 @@ jobs:
 
       - name: Collect APK files
         run: |
+          set -euo pipefail
           mkdir -p dist
+
           find Telegram/TMessagesProj/build/outputs/apk \
             -type f -name "*.apk" -exec cp {} dist/ \;
+
           test -n "$(find dist -name '*.apk' -print -quit)"
 
       - name: Check native libraries
@@ -103,6 +158,8 @@ jobs:
                 echo "ERROR: apksigner not found"
                 exit 1
               fi
+
+              : > /workspace/apk-signature-report.txt
 
               for apk in /workspace/dist/*.apk; do
                 [ -f "$apk" ] || continue
