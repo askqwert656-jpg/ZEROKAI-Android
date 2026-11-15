@@ -90,13 +90,13 @@ jobs:
               content = f.read()
 
           content, id_count = re.subn(
-              r'public\s+static\s+(?:final\\s+)?int\\s+APP_ID\\s*=\\s*\\d+\\s*;',
+              r'public\s+static\s+(?:final\s+)?int\s+APP_ID\s*=\s*\d+\s*;',
               f'public static int APP_ID = {app_id};',
               content
           )
 
           content, hash_count = re.subn(
-              r'public\s+static\s+(?:final\\s+)?String\\s+APP_HASH\\s*=\\s*"[^"]*"\\s*;',
+              r'public\s+static\s+(?:final\s+)?String\s+APP_HASH\s*=\s*"[^"]*"\s*;',
               f'public static String APP_HASH = "{app_hash}";',
               content
           )
