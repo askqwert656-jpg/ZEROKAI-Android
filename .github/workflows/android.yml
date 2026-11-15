@@ -39,14 +39,30 @@ jobs:
 
       - name: Check native libraries
         run: |
-          echo "Native libraries and SHA-256:"
-          find Telegram/TMessagesProj/build -type f -name "*.so" -print0 \
-            | sort -z \
-            | xargs -0 -r sha256sum \
-            | tee native-libraries-sha256.txt
+          set -euo pipefail
 
-          echo "Checking suspicious library:"
-          find Telegram/TMessagesProj/build -type f -name "libtmessages.49.so" -print
+          REPORT="native-libraries-sha256.txt"
+          : > "$REPORT"
+
+          echo "Searching all build directories for native libraries..."
+
+          find Telegram -type f -name "*.so" -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' file; do
+                sha256sum "$file"
+              done | tee "$REPORT"
+
+          COUNT=$(grep -cE '^[0-9a-f]{64} ' "$REPORT" || true)
+
+          echo "Found native libraries: $COUNT"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: No native libraries found"
+            exit 1
+          fi
+
+          echo "Checking important libraries:"
+          grep -E 'libtmessages\.49\.so|libtwidget\.so' "$REPORT" || true
 
       - name: Collect APK files
         run: |
@@ -97,4 +113,4 @@ jobs:
           path: |
             native-libraries-sha256.txt
             apk-signature-report.txt
-          if-no-files-found: warn
+          if-no-files-found: error
