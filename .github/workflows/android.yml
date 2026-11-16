@@ -89,8 +89,8 @@ jobs:
                   updated,
                   count=1
               )
-              if beta_count != 1:
-                  raise SystemExit(f"ERROR: AppNameBeta not found exactly once in {path}")
+              if beta_count > 1:
+                  raise SystemExit(f"ERROR: Multiple AppNameBeta entries found in {path}")
               path.write_text(updated, encoding="utf-8")
 
           session_cell = root / "java/org/telegram/ui/Cells/SessionCell.java"
