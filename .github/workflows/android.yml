@@ -1,4 +1,4 @@
-name: Schizogram Android Build
+name: PotuzhnoGram Android Build
 
 on:
   workflow_dispatch:
@@ -61,7 +61,66 @@ jobs:
           echo "Widget sandbox nested submodules:"
           git -C TMessagesProj/jni/twidget/widget-sandbox submodule status --recursive
 
-      - name: Configure Schizogram Telegram API
+      - name: Apply PotuzhnoGram branding
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          root = Path("Telegram/TMessagesProj/src/main")
+          resource_files = list((root / "res").glob("values*/strings.xml"))
+          if not resource_files:
+              raise SystemExit("ERROR: No Android string resources found")
+
+          for path in resource_files:
+              content = path.read_text(encoding="utf-8")
+              updated, app_count = re.subn(
+                  r'(<string\s+name="AppName">).*?(</string>)',
+                  lambda m: m.group(1) + "PotuzhnoGram" + m.group(2),
+                  content,
+                  count=1
+              )
+              if app_count != 1:
+                  raise SystemExit(f"ERROR: AppName not found exactly once in {path}")
+              updated, beta_count = re.subn(
+                  r'(<string\s+name="AppNameBeta">).*?(</string>)',
+                  lambda m: m.group(1) + "PotuzhnoGram Beta" + m.group(2),
+                  updated,
+                  count=1
+              )
+              if beta_count > 1:
+                  raise SystemExit(f"ERROR: Multiple AppNameBeta entries found in {path}")
+              path.write_text(updated, encoding="utf-8")
+
+          session_cell = root / "java/org/telegram/ui/Cells/SessionCell.java"
+          content = session_cell.read_text(encoding="utf-8")
+          old = "stringBuilder.append(session.app_name);"
+          new = 'stringBuilder.append(session.current ? "PotuzhnoGram Android" : session.app_name);'
+          if content.count(old) != 1:
+              raise SystemExit("ERROR: SessionCell app-name display anchor mismatch")
+          session_cell.write_text(content.replace(old, new), encoding="utf-8")
+
+          session_sheet = root / "java/org/telegram/ui/SessionBottomSheet.java"
+          content = session_sheet.read_text(encoding="utf-8")
+          if content.count(old) != 1:
+              raise SystemExit("ERROR: SessionBottomSheet app-name display anchor mismatch")
+          session_sheet.write_text(content.replace(old, new), encoding="utf-8")
+
+          sessions_activity = root / "java/org/telegram/ui/SessionsActivity.java"
+          content = sessions_activity.read_text(encoding="utf-8")
+          old_local = 'session.app_name = "Telegram Android";'
+          if content.count(old_local) != 1:
+              raise SystemExit("ERROR: SessionsActivity local app-name anchor mismatch")
+          sessions_activity.write_text(
+              content.replace(old_local, 'session.app_name = "PotuzhnoGram Android";'),
+              encoding="utf-8"
+          )
+
+          print(f"PotuzhnoGram branding applied to {len(resource_files)} language resource files and device-session UI.")
+          PY
+
+      - name: Configure PotuzhnoGram Telegram API
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_HASH: ${{ secrets.APP_HASH }}
@@ -114,7 +173,7 @@ jobs:
           PY
 
       - name: Build Docker image
-        run: docker build -t schizogram-builder Telegram
+        run: docker build -t potuzhnogram-builder Telegram
 
       - name: Configure private PotuzhnoGram signing key
         env:
@@ -176,7 +235,7 @@ jobs:
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/Telegram:/home/source" \
-            schizogram-builder
+            potuzhnogram-builder
 
       - name: Remove private signing key from workspace
         if: always()
@@ -286,17 +345,17 @@ jobs:
               done
             '
 
-      - name: Upload Schizogram APK
+      - name: Upload PotuzhnoGram APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Schizogram-APK
+          name: PotuzhnoGram-APK
           path: dist/*.apk
           if-no-files-found: error
 
       - name: Upload security report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Schizogram-Security-Report
+          name: PotuzhnoGram-Security-Report
           path: |
             native-libraries-sha256.txt
             apk-signature-report.txt
