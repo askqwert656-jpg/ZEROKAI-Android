@@ -76,16 +76,16 @@ jobs:
           for path in resource_files:
               content = path.read_text(encoding="utf-8")
               updated, app_count = re.subn(
-                  r'(<string\\s+name="AppName">).*?(</string>)',
-                  r'\\1PotuzhnoGram\\2',
+                  r'(<string\s+name="AppName">).*?(</string>)',
+                  lambda m: m.group(1) + "PotuzhnoGram" + m.group(2),
                   content,
                   count=1
               )
               if app_count != 1:
                   raise SystemExit(f"ERROR: AppName not found exactly once in {path}")
               updated, beta_count = re.subn(
-                  r'(<string\\s+name="AppNameBeta">).*?(</string>)',
-                  r'\\1PotuzhnoGram Beta\\2',
+                  r'(<string\s+name="AppNameBeta">).*?(</string>)',
+                  lambda m: m.group(1) + "PotuzhnoGram Beta" + m.group(2),
                   updated,
                   count=1
               )
